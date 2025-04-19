@@ -1,0 +1,11 @@
+services:
+  - type: worker
+    name: cohere-telegram-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TELEGRAM_TOKEN
+        value: your_telegram_bot_token
+      - key: COHERE_API_KEY
+        value: your_cohere_api_key
