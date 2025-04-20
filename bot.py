@@ -1,51 +1,34 @@
 # bot.py
-import os
-import cohere
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from youtube import search_youtube
 
-# Configuration
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-MODEL_NAME = "command"  # Cohere model name
-
-# Initialize Cohere client
-co = cohere.Client(COHERE_API_KEY)
+BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🤖 Hello! I'm a Cohere-powered AI assistant.\n"
-        "You can ask me anything - I'm here to help!"
-    )
+    await update.message.reply_text("🎶 Send /song <name> to search YouTube for music!")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
-    
-    try:
-        # Show typing indicator
-        await context.bot.send_chat_action(
-            chat_id=update.effective_chat.id,
-            action="typing"
+async def song(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("❗Usage: /song <song name>")
+        return
+
+    query = ' '.join(context.args)
+    yt_link = search_youtube(query)
+
+    if yt_link:
+        buttons = [[InlineKeyboardButton("▶️ Watch on YouTube", url=yt_link)]]
+        await update.message.reply_text(
+            f"🔎 Top result for *{query}*:\n{yt_link}",
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode='Markdown'
         )
-
-        # Generate response using Cohere
-        response = co.chat(
-            message=user_message,
-            model=MODEL_NAME,
-            temperature=0.7,
-            max_tokens=300
-        )
-
-        await update.message.reply_text(response.text)
-
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {str(e)}")
+    else:
+        await update.message.reply_text("🚫 No results found.")
 
 if __name__ == "__main__":
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("🤖 Bot is running...")
+    app.add_handler(CommandHandler("song", song))
     app.run_polling()
+    
