@@ -3,9 +3,7 @@ import requests
 import instaloader
 from flask import Flask, request
 from telegram import Bot, Update
-from telegram.ext import CommandHandler, ContextTypes, CallbackContext
-from telegram.ext import Application
-
+from telegram.ext import CommandHandler, ContextTypes, Application
 import asyncio
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -18,7 +16,6 @@ loader = instaloader.Instaloader()
 # Initialize Telegram application for handler usage
 application = Application.builder().token(BOT_TOKEN).build()
 
-
 def extract_shortcode(url: str) -> str:
     url = url.strip('/')
     parts = url.split('/')
@@ -27,14 +24,12 @@ def extract_shortcode(url: str) -> str:
             return parts[i + 1]
     return parts[-1]
 
-
 def get_media_url(shortcode: str) -> str:
     try:
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
         return post.video_url if post.is_video else post.url
     except:
         return None
-
 
 async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -68,15 +63,12 @@ async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
-
 application.add_handler(CommandHandler("download", download_command))
-
 
 @app.route('/')
 def home():
     bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     return 'Webhook set', 200
-
 
 @app.route('/webhook', methods=["POST"])
 def webhook():
@@ -84,7 +76,6 @@ def webhook():
     update = Update.de_json(data, bot)
     asyncio.run(application.process_update(update))
     return 'ok', 200
-
 
 if __name__ == "__main__":
     app.run(port=5000)
