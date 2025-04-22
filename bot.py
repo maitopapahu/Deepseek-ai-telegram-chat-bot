@@ -1,81 +1,47 @@
 import os
 import logging
+import requests
 from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
-import yt_dlp
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler
 
-# Set up logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
-logger = logging.getLogger(__name__)
+TOKEN = os.environ.get("BOT_TOKEN")
+bot = Bot(token=TOKEN)
 
-# Set environment variables for Telegram bot
-TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL")  # Your Koyeb URL
-
-# Flask app setup
 app = Flask(__name__)
-bot_app = Application.builder().token(TOKEN).build()
+dispatcher = Dispatcher(bot, None, use_context=True)
 
-# Command handler - Start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome! Send me an Instagram post URL, and I'll download the media.")
+logging.basicConfig(level=logging.INFO)
 
-# Media downloader logic
-async def download_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-    if "instagram.com" not in url:
-        await update.message.reply_text("Please send a valid Instagram post URL.")
-        return
+# Command handler
+def start(update, context):
+    update.message.reply_text("Send an Instagram URL to download media.")
 
-    await update.message.reply_text("Downloading media...")
+def handle_message(update, context):
+    url = update.message.text.strip()
+    if "instagram.com" in url:
+        update.message.reply_text(f"Simulating download for: {url}")
+        # You can add actual download logic here
+    else:
+        update.message.reply_text("Please send a valid Instagram URL.")
 
-    try:
-        # Use yt-dlp to download Instagram media
-        ydl_opts = {
-            'quiet': True,
-            'format': 'best',
-            'outtmpl': '/tmp/%(id)s.%(ext)s',
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            video_url = info_dict.get("url", None)
-            await update.message.reply_video(video_url)  # Send video back
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CommandHandler("help", start))
+dispatcher.add_handler(CommandHandler("download", handle_message))  # optional
+dispatcher.add_handler(
+    telegram.ext.MessageHandler(telegram.ext.Filters.text & ~telegram.ext.Filters.command, handle_message)
+)
 
-    except Exception as e:
-        logger.error(f"Error downloading Instagram media: {e}")
-        await update.message.reply_text("Sorry, something went wrong while downloading the media.")
-
-# Flask route for webhook
-@app.route("/webhook", methods=["POST"])
-async def webhook():
-    update_data = request.get_json(force=True)
-    logger.debug(f"Received update: {update_data}")  # Log for debugging
-
-    update = Update.de_json(update_data, bot_app.bot)
-    await bot_app.update_queue.put(update)  # Await the async queue method
-
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
     return "ok"
 
-# Health check route for Koyeb
-@app.route("/", methods=["GET"])
-def health_check():
-    return "Bot is running!"
+@app.route('/')
+def home():
+    return "Bot is running."
 
-# Set the webhook when the app starts
-async def set_webhook():
-    bot = bot_app.bot
-    await bot.set_webhook(f"{APP_URL}/webhook")
-
-# Main function to initialize everything
-async def main():
-    await set_webhook()  # Set the webhook
-    app.run(port=8000, host="0.0.0.0")  # Run Flask on port 8000
-
-# Start everything
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    app.run(host="0.0.0.0", port=8000)
   
