@@ -1,9 +1,9 @@
 import os
 import logging
-import yt_dlp
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+import yt_dlp
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -12,17 +12,17 @@ logger = logging.getLogger(__name__)
 
 # Set environment variables for Telegram bot
 TOKEN = os.getenv("BOT_TOKEN")
-APP_URL = os.getenv("APP_URL")  # your Koyeb URL
+APP_URL = os.getenv("APP_URL")  # Your Koyeb URL
 
 # Flask app setup
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
-# Handle start command
+# Command handler - Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome! Send me an Instagram post URL and I'll fetch the media.")
+    await update.message.reply_text("Welcome! Send me an Instagram post URL, and I'll download the media.")
 
-# Handle Instagram URL and download media
+# Media downloader logic
 async def download_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "instagram.com" not in url:
@@ -31,8 +31,8 @@ async def download_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await update.message.reply_text("Downloading media...")
 
-    # Using yt-dlp to download the Instagram media
     try:
+        # Use yt-dlp to download Instagram media
         ydl_opts = {
             'quiet': True,
             'format': 'best',
@@ -50,13 +50,12 @@ async def download_instagram(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # Flask route for webhook
 @app.route("/webhook", methods=["POST"])
-def webhook():
+async def webhook():
     update_data = request.get_json(force=True)
     logger.debug(f"Received update: {update_data}")  # Log for debugging
 
-    # Process the update
     update = Update.de_json(update_data, bot_app.bot)
-    bot_app.update_queue.put(update)
+    await bot_app.update_queue.put(update)  # Await the async queue method
 
     return "ok"
 
@@ -65,17 +64,18 @@ def webhook():
 def health_check():
     return "Bot is running!"
 
-# Start the Flask app and webhook
+# Set the webhook when the app starts
 async def set_webhook():
     bot = bot_app.bot
     await bot.set_webhook(f"{APP_URL}/webhook")
 
+# Main function to initialize everything
 async def main():
-    await set_webhook()
-    app.run(port=8000, host="0.0.0.0")
+    await set_webhook()  # Set the webhook
+    app.run(port=8000, host="0.0.0.0")  # Run Flask on port 8000
 
-# Run the app
+# Start everything
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
-    
+  
