@@ -1,4 +1,2 @@
-python-telegram-bot==20.7
-Flask
-requests
-instaloader
+python-telegram-bot==20.0
+openai==1.14.3
