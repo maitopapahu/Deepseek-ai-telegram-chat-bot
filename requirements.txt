@@ -1,4 +1,3 @@
-Flask==2.3.3
-gunicorn==21.2.0
-python-telegram-bot==20.7
-instaloader==4.11
+Flask
+python-telegram-bot==20.3
+requests
