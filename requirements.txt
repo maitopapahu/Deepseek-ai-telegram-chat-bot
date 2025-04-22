@@ -1,5 +1,5 @@
 Flask
-python-telegram-bot==20.0
-requests
-yt-dlp
+python-dotenv
 gunicorn
+requests
+python-telegram-bot==13.15
