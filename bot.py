@@ -1,91 +1,155 @@
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-import joblib
 import os
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
-import logging
+import telebot
+import requests
+import json
+import random
+import string
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- Data Preprocessing and Model Training ---
-# Load the historical color data (adjust based on your actual data source)
-data = pd.read_csv("color_history.csv")
+# Load from environment variable
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# Feature engineering (adjust according to your data)
-features = ['Streak Length', 'Previous Color 1', 'Previous Color 2', 'Frequency of Red', 'Frequency of Green']
-X = data[features]
-y = data['Color']  # Target column (Color)
+USER_DATA_FILE = 'users.json'
+MAILTM_API = 'https://api.mail.tm'
 
-# Encoding the color (Red = 0, Green = 1, Violet = 2)
-y = y.map({'Red': 0, 'Green': 1, 'Violet': 2})
+# -------- Helper Functions --------
+def load_users():
+    try:
+        with open(USER_DATA_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return {}
 
-# Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+def save_users(users):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump(users, f, indent=4)
 
-# Train the Random Forest model
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+def random_string(length=10):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-# Evaluate model
-y_pred = model.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-print(f"Model Accuracy: {accuracy:.2f}")
+def get_domains():
+    r = requests.get(f"{MAILTM_API}/domains")
+    return [d["domain"] for d in r.json()["hydra:member"]]
 
-# Save the trained model
-joblib.dump(model, 'color_prediction_model.pkl')
+def register_account(email, password):
+    payload = {"address": email, "password": password}
+    r = requests.post(f"{MAILTM_API}/accounts", json=payload)
+    return r.status_code == 201
 
-# --- Telegram Bot Code ---
-# Load the trained model
-model = joblib.load('color_prediction_model.pkl')
+def get_token(email, password):
+    payload = {"address": email, "password": password}
+    r = requests.post(f"{MAILTM_API}/token", json=payload)
+    if r.status_code == 200:
+        return r.json()["token"]
+    return None
 
-# Set up logging for the Telegram bot
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    level=logging.INFO)
-logger = logging.getLogger(__name__)
+# -------- Bot Commands --------
+@bot.message_handler(commands=['start', 'help'])
+def handle_start(message):
+    bot.send_message(message.chat.id, """
+Welcome to Temp Mail Bot!
 
-# Function to predict color
-def predict_color(features):
-    prediction = model.predict([features])
-    return 'Red' if prediction == 0 else 'Green' if prediction == 1 else 'Violet'
+/new - Create a new temp email
+/myemail - Show your current temp email
+/inbox - List your inbox messages
+/read <id> - Read a specific message
+/delete - Delete your temp email
+/help - Show this help again
+    """)
 
-# Start command handler for the bot
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Welcome to the 91Club Color Prediction Bot! Type /predict to get a prediction.")
+@bot.message_handler(commands=['new'])
+def new_email(message):
+    domains = get_domains()
+    markup = InlineKeyboardMarkup()
+    for domain in domains:
+        markup.add(InlineKeyboardButton(domain, callback_data=f"domain:{domain}"))
+    bot.send_message(message.chat.id, "Choose a domain for your temp email:", reply_markup=markup)
 
-# Predict command handler
-def predict(update: Update, context: CallbackContext):
-    # Example feature values (replace with actual user input or historical data)
-    features = [2, 1, 1, 10, 8]  # Streak length, Previous Color 1, Previous Color 2, Frequency of Red, Frequency of Green
-    predicted_color = predict_color(features)
-    
-    # Send the prediction to the user
-    update.message.reply_text(f"Predicted Next Color: {predicted_color}")
+@bot.callback_query_handler(func=lambda call: call.data.startswith("domain:"))
+def handle_domain_select(call):
+    domain = call.data.split(":")[1]
+    users = load_users()
+    user_id = str(call.from_user.id)
 
-# Error handling for the bot
-def error(update: Update, context: CallbackContext):
-    logger.warning(f"Update {update} caused error {context.error}")
+    username = random_string()
+    email = f"{username}@{domain}"
+    password = random_string(12)
 
-# Main function to set up the bot
-def main():
-    # Insert your Bot's API Token here
-    TELEGRAM_API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')  # Using environment variable for security
-    updater = Updater(TELEGRAM_API_TOKEN, use_context=True)
-    
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
+    if register_account(email, password):
+        token = get_token(email, password)
+        if token:
+            users[user_id] = {"email": email, "password": password, "token": token}
+            save_users(users)
+            bot.send_message(call.message.chat.id, f"Your temp email:\n`{email}`", parse_mode="Markdown")
+        else:
+            bot.send_message(call.message.chat.id, "Failed to get token.")
+    else:
+        bot.send_message(call.message.chat.id, "Failed to register email.")
 
-    # Add command handlers for start and predict
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("predict", predict))
+@bot.message_handler(commands=['myemail'])
+def my_email(message):
+    users = load_users()
+    user_id = str(message.from_user.id)
+    if user_id in users:
+        email = users[user_id]["email"]
+        bot.send_message(message.chat.id, f"Your temp email:\n`{email}`", parse_mode="Markdown")
+    else:
+        bot.send_message(message.chat.id, "No temp email found. Use /new to create one.")
 
-    # Log all errors
-    dispatcher.add_error_handler(error)
+@bot.message_handler(commands=['inbox'])
+def check_inbox(message):
+    users = load_users()
+    user_id = str(message.from_user.id)
+    if user_id not in users:
+        return bot.send_message(message.chat.id, "No temp email found. Use /new to create one.")
 
-    # Start the bot and keep it running
-    updater.start_polling()
-    updater.idle()
+    token = users[user_id]["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    r = requests.get(f"{MAILTM_API}/messages", headers=headers)
+    messages = r.json().get("hydra:member", [])
 
-if __name__ == '__main__':
-    main()
-    
+    if not messages:
+        return bot.send_message(message.chat.id, "Inbox is empty.")
+
+    text = ""
+    for msg in messages:
+        text += f"ID: `{msg['id']}`\nFrom: {msg['from']['address']}\nSubject: *{msg['subject']}*\n\n"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['read'])
+def read_email(message):
+    args = message.text.split()
+    if len(args) < 2:
+        return bot.send_message(message.chat.id, "Usage: /read <message_id>")
+
+    msg_id = args[1]
+    users = load_users()
+    user_id = str(message.from_user.id)
+    if user_id not in users:
+        return bot.send_message(message.chat.id, "No temp email found. Use /new to create one.")
+
+    token = users[user_id]["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    r = requests.get(f"{MAILTM_API}/messages/{msg_id}", headers=headers)
+    if r.status_code != 200:
+        return bot.send_message(message.chat.id, "Failed to fetch message.")
+
+    msg = r.json()
+    text = f"*Subject:* {msg['subject']}\n*From:* {msg['from']['address']}\n\n{msg['text'] or '[No text content]'}"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['delete'])
+def delete_email(message):
+    users = load_users()
+    user_id = str(message.from_user.id)
+    if user_id in users:
+        del users[user_id]
+        save_users(users)
+        bot.send_message(message.chat.id, "Your temp email has been deleted.")
+    else:
+        bot.send_message(message.chat.id, "You don't have a temp email to delete.")
+
+# -------- Start Bot --------
+bot.polling()
+      
