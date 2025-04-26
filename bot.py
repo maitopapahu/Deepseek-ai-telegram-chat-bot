@@ -4,7 +4,7 @@ from rembg import remove
 from io import BytesIO
 
 # Your Telegram Bot token
-TOKEN = 'YOUR_BOT_TOKEN_HERE'
+TOKEN = '7529913637:AAFr-E6m5HRQLwhCRGUZBhT9pUfzcwRnG4Q'
 
 # Function to handle the /start command
 def start(update: Update, context):
