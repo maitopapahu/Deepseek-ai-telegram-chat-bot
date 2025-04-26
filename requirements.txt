@@ -1,2 +1,2 @@
-pyTelegramBotAPI==4.13.0
-requests
+python-telegram-bot==20.1
+rembg==2.0.25
