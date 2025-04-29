@@ -1,2 +1,7 @@
 pillow
 rembg
+python-telegram-bot
+flask
+torch
+torchvision
+numpy
